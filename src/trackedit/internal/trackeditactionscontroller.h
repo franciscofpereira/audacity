@@ -15,6 +15,7 @@
 #include "iprojecthistory.h"
 #include "itrackeditinteraction.h"
 #include "iselectioncontroller.h"
+#include "playback/itrackplaybackcontrol.h"
 
 #include "../itrackeditactionscontroller.h"
 
@@ -28,6 +29,7 @@ class TrackeditActionsController : public ITrackeditActionsController, public mu
     muse::Inject<trackedit::ITrackeditInteraction> trackeditInteraction;
     muse::Inject<trackedit::IProjectHistory> projectHistory;
     muse::Inject<projectscene::IProjectSceneConfiguration> projectSceneConfiguration;
+    muse::Inject<au::playback::ITrackPlaybackControl> trackPlaybackControl;
 
 public:
     void init();
@@ -53,6 +55,7 @@ private:
     void doGlobalJoin();
     void doGlobalDisjoin();
     void doGlobalDuplicate();
+    void doGlobalMute();
 
     void doGlobalCutPerClipRipple();
     void doGlobalCutPerTrackRipple();
@@ -69,6 +72,14 @@ private:
     void clipCut(const muse::actions::ActionData& args);
     void multiClipCut(const muse::actions::ActionData& args);
     void rangeSelectionCut(const muse::actions::ActionData& args);
+
+    void clipMute(const muse::actions::ActionData& args);
+    void multiClipMute(const muse::actions::ActionData& args);
+    void rangeSelectionMute(const muse::actions::ActionData& args);
+
+    void clipUnmute(const muse::actions::ActionData& args);
+    void multiClipUnmute(const muse::actions::ActionData& args);
+    void rangeSelectionUnmute(const muse::actions::ActionData& args);
 
     void clipCopy(const muse::actions::ActionData& args);
     void multiClipCopy();

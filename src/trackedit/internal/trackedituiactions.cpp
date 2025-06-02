@@ -136,6 +136,18 @@ const UiActionList TrackeditUiActions::m_actions = {
              TranslatableString("action", "Split clips at silences"),
              TranslatableString("action", "Split clips at silences")
              ),
+    UiAction("mute",
+             au::context::UiCtxAny,
+             au::context::CTX_ANY,
+             TranslatableString("action", "Mute"),
+             TranslatableString("action", "Mute")
+            ),
+     UiAction("unmute",
+             au::context::UiCtxAny,
+             au::context::CTX_ANY,
+             TranslatableString("action", "Unmute"),
+             TranslatableString("action", "Unmute") 
+             ),  
     UiAction("undo",
              au::context::UiCtxAny,
              au::context::CTX_ANY,

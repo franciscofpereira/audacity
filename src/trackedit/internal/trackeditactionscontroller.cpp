@@ -5,6 +5,7 @@
 #include "project/internal/audacityproject.h"
 #include "trackediterrors.h"
 #include "translation.h"
+#include "playback/itrackplaybackcontrol.h"
 
 using namespace muse;
 using namespace au::trackedit;
@@ -19,6 +20,8 @@ static const ActionCode SPLIT_CODE("split");
 static const ActionCode JOIN_CODE("join");
 static const ActionCode DISJOIN_CODE("disjoin");
 static const ActionCode DUPLICATE_CODE("duplicate");
+static const ActionCode MUTE_CODE("mute");
+static const ActionCode UNMUTE_CODE("unmute");
 
 static const ActionCode CUT_PER_CLIP_RIPPLE_CODE("cut-per-clip-ripple");
 static const ActionCode CUT_PER_TRACK_RIPPLE_CODE("cut-per-track-ripple");
@@ -36,6 +39,13 @@ static const ActionCode RANGE_SELECTION_CUT_CODE("clip-cut-selected");
 static const ActionCode CLIP_COPY_CODE("clip-copy");
 static const ActionCode MULTI_CLIP_COPY_CODE("multi-clip-copy");
 static const ActionCode RANGE_SELECTION_COPY_CODE("clip-copy-selected");
+
+static const ActionCode CLIP_MUTE_CODE("clip-mute");
+static const ActionCode CLIP_UNMUTE_CODE("clip-unmute");
+static const ActionCode MULTI_CLIP_MUTE_CODE("multi-clip-mute");
+static const ActionCode MULTI_CLIP_UNMUTE_CODE("multi-clip-unmute");
+static const ActionCode RANGE_SELECTION_MUTE_CODE("clip-mute-selected");
+static const ActionCode RANGE_SELECTION_UNMUTE_CODE("clip-unmute-selected");
 
 static const ActionCode PASTE_INSERT_CODE("paste-insert");
 static const ActionCode PASTE_INSERT_ALL_TRACKS_RIPPLE_CODE("paste-insert-all-tracks-ripple");
@@ -91,6 +101,14 @@ static const std::vector<ActionCode> actionsDisabledDuringRecording {
     DELETE_ALL_TRACKS_RIPPLE_CODE,
     SPLIT_CODE,
     JOIN_CODE,
+    MUTE_CODE,
+    UNMUTE_CODE,
+    CLIP_MUTE_CODE,
+    CLIP_UNMUTE_CODE,
+    MULTI_CLIP_MUTE_CODE,
+    MULTI_CLIP_UNMUTE_CODE,
+    RANGE_SELECTION_MUTE_CODE,
+    RANGE_SELECTION_UNMUTE_CODE,
     DUPLICATE_CODE,
     CLIP_CUT_CODE,
     MULTI_CLIP_CUT_CODE,
@@ -136,6 +154,7 @@ void TrackeditActionsController::init()
     dispatcher()->reg(this, JOIN_CODE, this, &TrackeditActionsController::doGlobalJoin);
     dispatcher()->reg(this, DISJOIN_CODE, this, &TrackeditActionsController::doGlobalDisjoin);
     dispatcher()->reg(this, DUPLICATE_CODE, this, &TrackeditActionsController::doGlobalDuplicate);
+    dispatcher()->reg(this, MUTE_CODE, this, &TrackeditActionsController::doGlobalMute);
 
     dispatcher()->reg(this, CUT_PER_CLIP_RIPPLE_CODE, this, &TrackeditActionsController::doGlobalCutPerClipRipple);
     dispatcher()->reg(this, CUT_PER_TRACK_RIPPLE_CODE, this, &TrackeditActionsController::doGlobalCutPerTrackRipple);
@@ -152,6 +171,14 @@ void TrackeditActionsController::init()
     dispatcher()->reg(this, CLIP_CUT_CODE, this, &TrackeditActionsController::clipCut);
     dispatcher()->reg(this, MULTI_CLIP_CUT_CODE, this, &TrackeditActionsController::multiClipCut);
     dispatcher()->reg(this, RANGE_SELECTION_CUT_CODE, this, &TrackeditActionsController::rangeSelectionCut);
+
+    dispatcher()->reg(this, CLIP_MUTE_CODE, this, &TrackeditActionsController::clipMute);
+    dispatcher()->reg(this, MULTI_CLIP_MUTE_CODE, this, &TrackeditActionsController::multiClipMute);
+    dispatcher()->reg(this, RANGE_SELECTION_MUTE_CODE, this, &TrackeditActionsController::rangeSelectionMute);
+    
+    dispatcher()->reg(this, CLIP_UNMUTE_CODE, this, &TrackeditActionsController::clipUnmute);
+    dispatcher()->reg(this, MULTI_CLIP_UNMUTE_CODE, this, &TrackeditActionsController::multiClipUnmute);
+    dispatcher()->reg(this, RANGE_SELECTION_UNMUTE_CODE, this, &TrackeditActionsController::rangeSelectionUnmute);
 
     dispatcher()->reg(this, CLIP_COPY_CODE, this, &TrackeditActionsController::clipCopy);
     dispatcher()->reg(this, MULTI_CLIP_COPY_CODE, this, &TrackeditActionsController::multiClipCopy);
@@ -497,6 +524,37 @@ void TrackeditActionsController::doGlobalDuplicate()
     }
 }
 
+void TrackeditActionsController::doGlobalMute()
+{
+    // If a time selection is active, mute the selection in the selected tracks
+    if (selectionController()->timeSelectionIsNotEmpty()) {
+        auto selectedTracks = selectionController()->selectedTracks();
+        secs_t selectedStartTime = selectionController()->dataSelectedStartTime();
+        secs_t selectedEndTime = selectionController()->dataSelectedEndTime();
+
+        dispatcher()->dispatch(RANGE_SELECTION_MUTE_CODE,
+            ActionData::make_arg3<TrackIdList, secs_t, secs_t>(selectedTracks, selectedStartTime, selectedEndTime));
+        return;
+    }
+
+    // If multiple clips are selected, mute all of them
+    auto selectedClips = selectionController()->selectedClips();
+    if (selectedClips.size() > 1) {
+        dispatcher()->dispatch(MULTI_CLIP_MUTE_CODE, ActionData::make_arg1<ClipKeyList>(selectedClips));
+        return;
+    }
+
+    // If a single clip is selected, mute it
+    if (selectedClips.size() == 1) {
+        dispatcher()->dispatch(CLIP_MUTE_CODE, ActionData::make_arg1<ClipKey>(selectedClips.front()));
+        return;
+    }
+
+    // If nothing is selected, show an error
+    interactive()->error(
+        muse::trc("trackedit", "No audio selected"),
+        muse::trc("trackedit", "Select the audio for Mute then try again."));
+}
 void TrackeditActionsController::clipCut(const ActionData& args)
 {
     ClipKey clipKey = args.arg<ClipKey>(0);
@@ -506,6 +564,88 @@ void TrackeditActionsController::clipCut(const ActionData& args)
 
     trackeditInteraction()->clearClipboard();
     trackeditInteraction()->cutClipIntoClipboard(clipKey);
+}
+
+void TrackeditActionsController::clipMute(const muse::actions::ActionData& args)
+{
+    ClipKey clipKey = args.arg<ClipKey>(0);
+    if (!clipKey.isValid()) {
+        return;
+    }
+
+    trackPlaybackControl()->setMuted(clipKey.trackId, true);
+}
+
+void TrackeditActionsController::clipUnmute(const muse::actions::ActionData& args)
+{
+    ClipKey clipKey = args.arg<ClipKey>(0);
+    if (!clipKey.isValid()) {
+        return;
+    }
+
+    trackPlaybackControl()->setMuted(clipKey.trackId, false);
+}
+
+void TrackeditActionsController::multiClipMute(const muse::actions::ActionData& args)
+{
+    ClipKeyList selectedClips = selectionController()->selectedClips();
+    if (selectedClips.empty()) {
+        return;
+    }
+
+    for (const auto& clipKey : selectedClips) {
+        trackPlaybackControl()->setMuted(clipKey.trackId, true);
+    }
+}
+
+void TrackeditActionsController::multiClipUnmute(const muse::actions::ActionData& args)
+{
+    ClipKeyList selectedClips = selectionController()->selectedClips();
+    if (selectedClips.empty()) {
+        return;
+    }
+
+    for (const auto& clipKey : selectedClips) {
+        trackPlaybackControl()->setMuted(clipKey.trackId, false);
+    }
+}
+
+void TrackeditActionsController::rangeSelectionMute(const muse::actions::ActionData& args)
+{
+    TrackIdList selectedTracks = selectionController()->selectedTracks();
+    secs_t selectedStartTime = selectionController()->dataSelectedStartTime();
+    secs_t selectedEndTime = selectionController()->dataSelectedEndTime();
+
+    // First cut the selected region and store it in clipboard
+    trackeditInteraction()->clearClipboard();
+    trackeditInteraction()->splitCutSelectedOnTracks(selectedTracks, selectedStartTime, selectedEndTime);
+
+    // Create new tracks for the muted content
+    for (const auto& trackId : selectedTracks) {
+        trackeditInteraction()->newMonoTrack();
+    }
+
+    // Get the newly created tracks (they will be at the end of the track list)
+    auto prj = globalContext()->currentTrackeditProject();
+    auto tracks = prj->trackList();
+
+    // Paste the content into the new tracks at the same position
+    trackeditInteraction()->pasteFromClipboard(selectedStartTime, false);
+
+    // Mute the newly created tracks
+    for (size_t i = tracks.size() - selectedTracks.size(); i < tracks.size(); i++) {
+        trackPlaybackControl()->setMuted(tracks[i].id, true);
+    }
+}
+
+void TrackeditActionsController::rangeSelectionUnmute(const muse::actions::ActionData& args)
+{
+    TrackIdList selectedTracks = selectionController()->selectedTracks();
+
+    // Unmute each selected track
+    for (const auto& trackId : selectedTracks) {
+        trackPlaybackControl()->setMuted(trackId, false);
+    }
 }
 
 void TrackeditActionsController::clipCopy(const ActionData& args)

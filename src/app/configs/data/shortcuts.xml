@@ -1130,4 +1130,12 @@
         <key>keyboard-scrub-forwards</key>
         <seq>I</seq>
     </SC>
+    <SC>
+        <key>mute</key>
+        <seq>Ctrl+M</seq>
+    </SC>
+    <SC>
+        <key>clip-unmute</key>
+        <seq>Ctrl+Shift+W</seq>
+    </SC>
 </Shortcuts>

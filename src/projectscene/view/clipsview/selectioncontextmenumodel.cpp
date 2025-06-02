@@ -26,6 +26,8 @@ MenuItemList SelectionContextMenuModel::makeItems()
         makeMenuItem("copy"),
         makeMenuItem("duplicate"),
         makeMenuItem("paste"),
+        makeMenuItem("mute"),
+        makeMenuItem("unmute"),
         makeSeparator(),
         makeMenuItem("split")
     };

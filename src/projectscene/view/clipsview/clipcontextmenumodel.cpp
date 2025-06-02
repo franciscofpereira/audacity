@@ -50,6 +50,7 @@ void ClipContextMenuModel::load()
         enableStretchItem,
         makeItemWithArg("clip-pitch-speed"),
         makeItemWithArg("clip-render-pitch-speed"),
+        makeItemWithArg("clip-unmute"),
     };
 
     setItems(items);
